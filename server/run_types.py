@@ -199,6 +199,49 @@ REGISTRY: Dict[str, tuple] = {
     "analytics_refresh":       (None, None),  # DB aggregation, no agent
 }
 
+# Product agent runs receive only the capabilities their pipeline step needs.
+# An empty tuple is intentional and means the model receives no tools.
+RUN_TOOLSETS: dict[str, tuple[str, ...]] = {
+    "document_processing": ("read_only_files",),
+    "product_extraction": ("read_only_files",),
+    "company_brain_build": (),
+    "company_profile_research": ("web",),
+    "lead_scan": ("web",),
+    "lead_research": ("web",),
+    "lead_research_gap": ("web",),
+    "lead_research_refresh": ("web",),
+    "contact_discovery": ("web",),
+    "outreach_generation": (),
+    "linkedin_note_generation": (),
+}
+
+RUN_SKILLS: dict[str, frozenset[str]] = {
+    run_type: frozenset({skill})
+    for run_type, (skill, _) in REGISTRY.items()
+    if run_type in READ_ONLY and skill
+}
+RUN_SKILLS["outreach_generation"] = frozenset(
+    {"cold-email-outreach", "whatsapp-outreach"}
+)
+
+
+def execution_spec(
+    run_type: str,
+    requested_skill: str | None = None,
+) -> tuple[str, list[str]]:
+    """Return the preloaded skill and restricted toolsets for an agent run."""
+    if run_type not in READ_ONLY:
+        raise ValueError(f"run type is not eligible for agent execution: {run_type}")
+    default_skill, _ = REGISTRY[run_type]
+    skill = requested_skill or default_skill
+    if not skill or run_type not in RUN_TOOLSETS:
+        raise ValueError(f"run type has no agent execution profile: {run_type}")
+    if skill not in RUN_SKILLS.get(run_type, frozenset()):
+        raise ValueError(
+            f"skill {skill!r} is not allowed for run type {run_type!r}"
+        )
+    return skill, list(RUN_TOOLSETS[run_type])
+
 
 def build(run_type: str, company: str, payload: dict,
           context: dict | None = None) -> tuple[Optional[str], Optional[str]]:
@@ -210,4 +253,6 @@ def build(run_type: str, company: str, payload: dict,
     if builder is None:
         return None, None
     # territory gate for lead_scan is enforced at creation, not here (see cli)
+    if run_type == "outreach_generation" and payload.get("channel") == "whatsapp":
+        skill = "whatsapp-outreach"
     return skill, builder(company, payload, context)

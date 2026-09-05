@@ -94,7 +94,7 @@ def test_structured_output_extraction():
 
 
 def test_agent_transcript_tail_is_kept_for_the_error_message():
-    """`hermes -z` exits 0 on its own failures, so the reason is on stdout.
+    """Provider failures may leave their only useful reason in the transcript.
 
     Without the tail every such run reads as "output did not contain a JSON
     object", which is true of an unset provider, an expired key and a model the

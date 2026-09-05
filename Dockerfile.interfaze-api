@@ -5,9 +5,8 @@
 # This is NOT the upstream Hermes gateway image — that one is ./Dockerfile
 # (s6-overlay, gateway + dashboard services). This image ships exactly one
 # process: the FastAPI product API defined in server/app.py, plus a working
-# `hermes` CLI on PATH because server/agent_service.py shells out to it
-# (`hermes -z <prompt> --skills <skill> --yolo`) and /health reports
-# `agent_runs_enabled` from `shutil.which("hermes")`.
+# a restricted product runner on PATH because server/agent_service.py shells
+# out to it and /health reports whether that entry point is available.
 #
 # Build:
 #   docker build -f Dockerfile.interfaze-api -t interfaze-api:local .
@@ -82,7 +81,7 @@ RUN uv sync --locked --no-dev --no-editable --extra web --extra interfaze
 # Fail the build here rather than at container start if either console script
 # or the app package went missing.
 RUN test -x /opt/venv/bin/interfaze-api \
-    && test -x /opt/venv/bin/hermes \
+    && test -x /opt/venv/bin/interfaze-agent-run \
     && /opt/venv/bin/python -c "import server.app, tools.skills_sync"
 
 

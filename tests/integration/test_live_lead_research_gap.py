@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from server.agent_service import AgentRunService, HermesProcessExecutor, extract_json
+from server.agent_runner import EXECUTABLE as AGENT_RUNNER_EXECUTABLE, build_command
 from server.config import Settings
 from server.db import Database, json_dump, new_id, now
 from server.lead_research.agentic import AgenticResearchService
@@ -54,20 +55,19 @@ TARGET_DOMAIN = "silverline.com.tr"
 RUN_TIMEOUT_SECONDS = 600
 
 
-def _require_hermes() -> str:
+def _require_agent_runner() -> str:
     """The model to research with, or a skip naming what is missing.
 
-    The probe is a real one-shot agent call rather than ``--version``, because
+    The probe is a real product-runner call rather than ``--version``, because
     the ways this path is unusable are all downstream of the binary existing:
     no provider selected, an expired key, a model the account cannot reach.
-    ``hermes -z`` exits 0 on those, printing the reason instead of JSON — so
-    the probe asks for JSON and treats "no JSON came back" as unconfigured.
+    The probe asks for JSON and treats "no JSON came back" as unconfigured.
 
     An unconfigured machine skips. A configured one that cannot research is a
     failure, which is the entire point of the file.
     """
-    if shutil.which("hermes") is None:
-        pytest.skip("hermes is not on PATH: the live agent path cannot be exercised")
+    if shutil.which(AGENT_RUNNER_EXECUTABLE) is None:
+        pytest.skip("Interfaze agent runner is not on PATH")
     # Same value a campaign's model profile carries in production
     # (`GET /research/model-profiles` serves `settings.chat_model`), so the
     # live run uses the model the deployment would actually use.
@@ -79,18 +79,22 @@ def _require_hermes() -> str:
         )
     try:
         probe = subprocess.run(
-            ["hermes", "-z", 'Output JSON and nothing else: {"ok": true}',
-             "--yolo", "--model", model],
+            build_command(
+                "lead_research",
+                'Output JSON and nothing else: {"ok": true}',
+                skill="lead-research",
+                model=model,
+            ),
             capture_output=True, text=True, timeout=180,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        pytest.skip(f"hermes is not runnable here: {exc}")
+        pytest.skip(f"Interfaze agent runner is not runnable here: {exc}")
     transcript = f"{probe.stdout}\n{probe.stderr}".strip()
     try:
         assert extract_json(transcript).get("ok") is True
     except (ValueError, AssertionError):
         pytest.skip(
-            f"hermes cannot complete a trivial run with model {model!r}, so "
+            f"Interfaze agent runner cannot complete a trivial run with model {model!r}, so "
             f"there is no agent to test: {transcript[-400:] or '(no output)'}"
         )
     return model
@@ -118,7 +122,7 @@ def _request(campaign_id: str, organization_id: str, model: str) -> AgenticResea
             "route": "agentic",
         }],
         market_terms={"canonical": ["oven", "hob", "hood"]},
-        # The executor passes this straight through as hermes --model.
+        # The executor passes this straight through as the runner's --model.
         decision_model=model,
         budget={"page_limit": 3, "request_limit": 6, "time_limit_seconds": 240,
                 "token_limit": 20_000},
@@ -137,7 +141,7 @@ def _wait(runs: AgentRunService, company_id: str, run_id: str) -> dict:
 
 
 def test_live_agent_researches_a_company_and_its_facts_survive_the_quote_check():
-    model = _require_hermes()
+    model = _require_agent_runner()
     db, company_id, campaign_id = _tenant()
     runs = AgentRunService(db, HermesProcessExecutor(timeout=RUN_TIMEOUT_SECONDS))
     organization_id = new_id("org")

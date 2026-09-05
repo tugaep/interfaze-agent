@@ -49,7 +49,7 @@ def test_every_run_type_maps_to_a_real_skill(run_type: str) -> None:
 def test_every_run_type_carries_tenant_and_payload_into_the_prompt(run_type: str) -> None:
     """The skill arrives via `hermes --skills`; the prompt must carry the rest.
 
-    HermesProcessExecutor runs `hermes -z <prompt> --skills <skill> --yolo`, so
+    HermesProcessExecutor preloads the mapped skill in the product runner, so
     the skill name does not need to appear in the prompt text. What does need to
     survive the builder is the run's own inputs and the tenant it belongs to —
     a builder that drops the payload produces an agent run with nothing to act
@@ -70,6 +70,17 @@ def test_analytics_refresh_stays_agentless() -> None:
     """It aggregates the database; giving it a skill would put an LLM in the path."""
     skill, prompt = build("analytics_refresh", "silverline", {})
     assert skill is None and prompt is None
+
+
+def test_whatsapp_outreach_loads_the_whatsapp_playbook() -> None:
+    skill, prompt = build(
+        "outreach_generation",
+        "silverline",
+        {"channel": "whatsapp"},
+    )
+
+    assert skill == "whatsapp-outreach"
+    assert "whatsapp-outreach" in prompt
 
 
 def test_unknown_run_type_is_rejected_by_name() -> None:

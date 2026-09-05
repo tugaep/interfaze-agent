@@ -24,6 +24,7 @@ from .outreach_service import OutreachService
 from .postgres import create_database
 from .storage import create_storage
 from .agent_service import AgentRunService, StubRunExecutor
+from .agent_runner import EXECUTABLE as AGENT_RUNNER_EXECUTABLE
 from .chat_bridge import ChatBridge
 from .scheduler import DailyDigestScheduler
 from .lead_research import LeadResearchService
@@ -160,7 +161,7 @@ def create_app(settings: Settings | None = None, db: Database | None = None,
     def health():
         return {"status": "ok", "service": "interfaze-agent", "api_version": "v1",
                 "chat_enabled": bool(chat_service),
-                "agent_runs_enabled": shutil.which("hermes") is not None}
+                "agent_runs_enabled": shutil.which(AGENT_RUNNER_EXECUTABLE) is not None}
 
     webui_dir = Path(__file__).resolve().parent / "webui"
     if settings.webui_enabled and webui_dir.is_dir():
@@ -215,8 +216,8 @@ def _warn_on_incomplete_config(settings: Settings) -> None:
     if settings.auth_mode == "supabase" and not (settings.supabase_url and settings.supabase_anon_key):
         log("auth_mode is supabase but SUPABASE_URL/SUPABASE_ANON_KEY are unset: "
             "all authentication will return 503", logging.ERROR)
-    if shutil.which("hermes") is None:
-        log("hermes CLI is not on PATH: every agent run (lead discovery, "
+    if shutil.which(AGENT_RUNNER_EXECUTABLE) is None:
+        log("Interfaze agent runner is not on PATH: every agent run (lead discovery, "
             "research, outreach generation) will fail", logging.ERROR)
 
 

@@ -51,7 +51,12 @@ class BrowserWebmailProvider:
             "On success output ONLY the JSON object the skill specifies."
         )
         process = subprocess.run(
-            ["hermes", "-z", prompt, "--skills", "webmail-send", "--yolo"],
+            [
+                "hermes", "-z", prompt,
+                "--skills", "webmail-send",
+                "--toolsets", "browser",
+                "--yolo",
+            ],
             capture_output=True, text=True, timeout=TIMEOUT,
         )
         if process.returncode != 0:

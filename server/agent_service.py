@@ -20,6 +20,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from . import run_types
+from .agent_runner import build_command
 from .agent_evidence import evidence_from_log, evidence_from_output
 from .db import Database, json_dump, json_load, new_id, now
 from .quality import (canonical_linkedin_url, content_hash, normalize_name,
@@ -258,9 +259,14 @@ class HermesProcessExecutor(BaseRunExecutor):
         )
         if skill is None:
             return {"metrics": service.analytics(run["company_id"])}
-        command = ["hermes", "-z", prompt, "--skills", skill, "--yolo"]
+        command = build_command(run["run_type"], prompt, skill=skill)
         if run["run_type"] == "lead_research_gap":
-            command.extend(["--model", run["payload"]["decision_model"]])
+            command = build_command(
+                run["run_type"],
+                prompt,
+                skill=skill,
+                model=run["payload"]["decision_model"],
+            )
         process = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, env={**os.environ},
@@ -309,15 +315,15 @@ class HermesProcessExecutor(BaseRunExecutor):
             transcript = "".join(lines)
             if returncode != 0:
                 raise RuntimeError(
-                    f"Hermes exited with status {returncode}: {_last_lines(transcript)}"
+                    f"Interfaze agent runner exited with status {returncode}: "
+                    f"{_last_lines(transcript)}"
                 )
             try:
                 return extract_json(transcript)
             except ValueError as exc:
-                # `hermes -z` reports its own failures on stdout and still
-                # exits 0 — an unset provider, an expired key, a model the
-                # account cannot reach. Without the transcript those all
-                # surface as "agent output did not contain a JSON object",
+                # Some provider failures produce no structured output. Without
+                # the transcript those cases surface as "agent output did not
+                # contain a JSON object",
                 # which is true and tells an operator nothing.
                 raise RuntimeError(f"{exc}: {_last_lines(transcript)}") from exc
         finally:
