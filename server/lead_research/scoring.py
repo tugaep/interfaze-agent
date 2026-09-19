@@ -35,6 +35,13 @@ DIMENSION_CLAIM_FIELDS = {
     "contactability": ("contactability", "domain", "email", "phone", "linkedin_url", "contact_channel"),
 }
 _DIRECT_DIMENSION_FIELDS = frozenset(SCORE_DIMENSIONS)
+# The complete claim-field vocabulary the engine consumes: every field with a
+# freshness TTL plus every field a dimension can be earned by. A source's
+# `emits` is validated against this (models.DatasetDefinition), so a typo in a
+# catalog entry fails at boot instead of leaving a dimension unanswered forever.
+CLAIM_FIELDS = frozenset(FACT_TTL_DAYS) | frozenset(
+    field for fields in DIMENSION_CLAIM_FIELDS.values() for field in fields
+)
 _SUPPORTED_CLAIM_KINDS = frozenset((
     ("observed", "observed"),
     ("estimated_range", "estimated_range"),

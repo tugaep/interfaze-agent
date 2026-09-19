@@ -68,3 +68,23 @@ def test_runner_rejects_a_skill_not_allowed_for_the_run_type():
         assert "not allowed" in str(exc)
     else:
         raise AssertionError("runner accepted an unrelated skill")
+
+
+def test_model_choice_is_registry_data_not_a_run_type_branch():
+    """Only run types listed in RUN_MODEL_PAYLOAD_KEY carry a caller-chosen model."""
+    from server.run_types import RUN_MODEL_PAYLOAD_KEY, model_for
+
+    assert RUN_MODEL_PAYLOAD_KEY == {"lead_research_gap": "decision_model"}
+    assert model_for("lead_research_gap", {"decision_model": "provider/model"}) == "provider/model"
+    assert model_for("lead_scan", {"decision_model": "ignored"}) is None
+
+
+def test_a_run_that_must_name_a_model_fails_loudly_without_one():
+    from server.run_types import model_for
+
+    try:
+        model_for("lead_research_gap", {"decision_model": " "})
+    except ValueError as exc:
+        assert "decision_model" in str(exc)
+    else:
+        raise AssertionError("a blank decision_model ran on the default model")

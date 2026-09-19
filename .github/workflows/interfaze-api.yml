@@ -134,6 +134,14 @@ jobs:
           source .venv/bin/activate
           python -m pytest tests -q
 
+      # sectors.md and sectors.csv are generated from sectors.yaml. A stale
+      # artifact is silent at run time, so the check runs here by name.
+      - name: Verify generated sector artifacts are current
+        run: |
+          set -euo pipefail
+          source .venv/bin/activate
+          python -m server.lead_research.sectors --check
+
       # Test files are listed one by one: `node --test <dir>` only picks up
       # `test-*` / `*.test.*` names, which would silently skip these.
       - name: Run WebUI browser tests

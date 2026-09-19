@@ -35,27 +35,15 @@ from ..models import (
     VerificationBundle,
     VerificationSource,
 )
+from ..catalog import catalog_definition
 from ..quotes import spans_for_facts
 from .base import CatalogProvider
 from .bright_data import _normalized_domain
 
 
 def corpus_definition() -> DatasetDefinition:
-    return DatasetDefinition(
-        source_id="customer-list-corpus",
-        display_name="Customer list corpus",
-        publisher="Customer-supplied company list",
-        jurisdiction=["global"],
-        categories=["matchmaking"],
-        access_tier="customer_upload",
-        entity_levels=["named_company"],
-        capabilities=["organizations", "candidate_verification"],
-        emits=["company_name", "country", "domain", "buyer_role", "product_term"],
-        freshness_days=365,
-        adapter_mode="live",
-        default_enabled=False,
-        health="active",
-    )
+    """The catalog entry; provider-catalog.yaml is the only place it is written."""
+    return catalog_definition("customer-list-corpus")
 
 
 # Which manifest purposes assert enough to speak for a row. A directory says
@@ -69,8 +57,8 @@ _ASSERTED_MARKET_COVERAGE = 80
 
 
 class CorpusProvider(CatalogProvider):
-    def __init__(self) -> None:
-        super().__init__(corpus_definition())
+    def __init__(self, *, definition: DatasetDefinition | None = None) -> None:
+        super().__init__(definition or corpus_definition())
 
     def health(self) -> ProviderHealth:
         return ProviderHealth(status="active", message="Imported corpora need no credential")

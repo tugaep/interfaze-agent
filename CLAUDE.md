@@ -100,7 +100,7 @@ editing the YAML:
 .venv/bin/python -m server.lead_research.sectors --check  # verify
 ```
 
-Nothing in CI runs that check. Stale artifacts are silent — run it yourself.
+CI runs that check as its own step. Stale artifacts are silent at run time, so run it locally too.
 
 **Two files named PRODUCT.md.** Root is the engineering spec (routes,
 contracts, order of work). `server/webui/PRODUCT.md` is design context

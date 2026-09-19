@@ -1,20 +1,13 @@
 """Declarative provider catalog and tenant lifecycle state."""
 from __future__ import annotations
 
-import yaml
-
 from ..config import Settings
+from .catalog import CATALOG_PATH, import_adapter, load_catalog
 from .models import DatasetDefinition, SourceCapability
 from .providers.base import CatalogProvider, Provider
 from .providers.base import CandidateSource, StructuredFactSource
-from .providers.bright_data import BrightDataVerifier
-from .providers.corpus import CorpusProvider
-from .providers.ted import TedVerifier
-from .sectors import REFERENCE_DIR
-from .verification import UnavailableCandidateVerifier
 
-
-CATALOG_PATH = REFERENCE_DIR / "provider-catalog.yaml"
+__all__ = ["CATALOG_PATH", "ProviderRegistry", "build_registry"]
 
 
 class ProviderRegistry:
@@ -148,40 +141,29 @@ def build_registry(
     settings: Settings | None = None,
     providers: dict[str, Provider] | None = None,
 ) -> ProviderRegistry:
-    raw = yaml.safe_load(CATALOG_PATH.read_text(encoding="utf-8")) or []
-    definitions = [DatasetDefinition.model_validate(item) for item in raw]
+    """Instantiate every adapter the catalog names.
+
+    No source id appears here. An entry without an `adapter:` stays a
+    CatalogProvider and renders as unavailable; one whose adapter_mode is
+    credential_required is built through the adapter's own `from_settings`,
+    which returns a gated stand-in when the deployment has not enabled it or
+    supplied the key. Tenants still opt in per source.
+    """
+    definitions = load_catalog()
     supplied = dict(providers or {})
-    bright_data = next(
-        (item for item in definitions if item.source_id == "brightdata-web"),
-        None,
-    )
-    if bright_data is not None and bright_data.source_id not in supplied:
-        settings = settings or Settings.load()
-        api_key = settings.brightdata_api_key.strip()
-        if not settings.brightdata_enabled:
-            supplied[bright_data.source_id] = UnavailableCandidateVerifier(
-                bright_data,
-                "disabled",
-            )
-        elif not api_key:
-            supplied[bright_data.source_id] = UnavailableCandidateVerifier(
-                bright_data,
-                "credential_required",
-            )
-        else:
-            verifier = BrightDataVerifier(
-                api_key,
-                settings.brightdata_unlocker_zone,
-            )
-            verifier.definition = bright_data
-            supplied[bright_data.source_id] = verifier
-    # TED needs no credential, so there is nothing to gate on: it is either in
-    # the catalog or it is not. Tenants still opt in per source.
-    for source_id, build in (("ted", TedVerifier), ("customer-list-corpus", CorpusProvider)):
-        definition = next((item for item in definitions if item.source_id == source_id), None)
-        if definition is None or source_id in supplied:
+    for definition in definitions:
+        if definition.source_id in supplied or definition.adapter is None:
             continue
-        verifier = build()
-        verifier.definition = definition
-        supplied[source_id] = verifier
+        adapter = import_adapter(definition)
+        if definition.adapter_mode == "credential_required":
+            from_settings = getattr(adapter, "from_settings", None)
+            if not callable(from_settings):
+                raise ValueError(
+                    f"{definition.source_id}: adapter {definition.adapter} is credential_required "
+                    "but has no from_settings(definition, settings) constructor"
+                )
+            settings = settings or Settings.load()
+            supplied[definition.source_id] = from_settings(definition, settings)
+        else:
+            supplied[definition.source_id] = adapter(definition=definition)
     return ProviderRegistry(definitions, supplied)

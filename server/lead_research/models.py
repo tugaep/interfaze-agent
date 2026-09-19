@@ -99,6 +99,10 @@ class DatasetDefinition(ApiModel):
     # against a lead's completeness, and this is what makes that knowable.
     # Empty means undeclared, which is treated as "no information", not "none".
     emits: list[str] = Field(default_factory=list)
+    # Where the adapter lives, as `package.module:ClassName`. The registry
+    # imports it; nothing in build_registry names a source. Absent means the
+    # entry is catalog-only and renders as unavailable.
+    adapter: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$")
     # How many candidates may be verified against this source at once. Declared
     # per source because it is a property of the upstream, not of our appetite:
     # TED rate-limits hard enough that its adapter already carries a 429
@@ -113,6 +117,21 @@ class DatasetDefinition(ApiModel):
     health: Literal["active", "degraded", "retired"] = "active"
     last_verified_at: str | None = None
     license_note: str | None = None
+
+    @field_validator("emits")
+    @classmethod
+    def emits_known_claim_fields(cls, value: list[str]) -> list[str]:
+        # Deferred import: scoring imports this module for Claim and LeadScore.
+        from .scoring import CLAIM_FIELDS
+
+        unknown = sorted(set(value) - CLAIM_FIELDS)
+        if unknown:
+            raise ValueError(
+                f"emits names claim fields the engine never consumes: {unknown}; "
+                "a source declaring them would leave those dimensions permanently "
+                "unanswered"
+            )
+        return value
 
     @model_validator(mode="after")
     def retired_is_not_enabled(self):

@@ -288,9 +288,9 @@ class ContractProvider(DeterministicProvider):
 class ContractRunExecutor(StubRunExecutor):
     """Credential-free agentic gap result with exact, accepted page spans."""
 
-    def execute(self, service, run: dict) -> dict[str, Any]:
+    def _execute_run(self, service, run: dict) -> dict[str, Any]:
         if run["run_type"] != "lead_research_gap":
-            return super().execute(service, run)
+            return super()._execute_run(service, run)
         payload = run["payload"]
         company = payload["company_name"]
         content = f"{company} employs 450 people and serves 12 countries."
