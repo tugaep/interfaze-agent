@@ -10,6 +10,7 @@ import hashlib
 import re
 import time
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -26,8 +27,13 @@ from ..models import (
     VerificationBundle,
     VerificationSource,
 )
+from ..catalog import catalog_definition
 from ..quotes import spans_for_facts
+from ..verification import UnavailableCandidateVerifier
 from .base import CatalogProvider
+
+if TYPE_CHECKING:
+    from ...config import Settings
 
 
 UNLOCKER_ENDPOINT = "https://api.brightdata.com/request"
@@ -41,25 +47,8 @@ MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\((https://[^\s)]+)\)")
 
 
 def bright_data_definition() -> DatasetDefinition:
-    return DatasetDefinition(
-        source_id="brightdata-web",
-        display_name="Bright Data Web Unlocker",
-        publisher="Bright Data",
-        jurisdiction=["global"],
-        categories=["web", "verification"],
-        homepage="https://brightdata.com/products/web-unlocker",
-        access_tier="credentialed_public",
-        entity_levels=["named_company"],
-        capabilities=["candidate_discovery", "candidate_verification", "web_evidence"],
-        emits=[
-            "company_name", "country", "domain", "buyer_role", "product_term",
-            "lifecycle_status",
-        ],
-        freshness_days=30,
-        adapter_mode="credential_required",
-        default_enabled=False,
-        health="active",
-    )
+    """The catalog entry; provider-catalog.yaml is the only place it is written."""
+    return catalog_definition("brightdata-web")
 
 
 def _clean_terms(values) -> list[str]:
@@ -188,15 +177,33 @@ class BrightDataVerifier(CatalogProvider):
         api_key: str,
         zone: str,
         client: httpx.Client | None = None,
+        *,
+        definition: DatasetDefinition | None = None,
     ) -> None:
         if not api_key.strip():
             raise ValueError("Bright Data API key is required")
         if not zone.strip():
             raise ValueError("Bright Data Web Unlocker zone is required")
-        super().__init__(bright_data_definition())
+        super().__init__(definition or bright_data_definition())
         self._api_key = api_key
         self.zone = zone
         self.client = client or httpx.Client()
+
+    @classmethod
+    def from_settings(cls, definition: DatasetDefinition, settings: "Settings") -> CatalogProvider:
+        """Build the verifier the deployment's settings allow, or a gated stand-in.
+
+        The registry calls this for every catalog entry whose adapter_mode is
+        credential_required; the adapter decides what its credential is. The
+        key itself never reaches the unavailable stand-in, so health output
+        cannot leak it.
+        """
+        if not settings.brightdata_enabled:
+            return UnavailableCandidateVerifier(definition, "disabled")
+        api_key = settings.brightdata_api_key.strip()
+        if not api_key:
+            return UnavailableCandidateVerifier(definition, "credential_required")
+        return cls(api_key, settings.brightdata_unlocker_zone, definition=definition)
 
     def health(self) -> ProviderHealth:
         return ProviderHealth(status="active", message="Candidate verifier is configured")

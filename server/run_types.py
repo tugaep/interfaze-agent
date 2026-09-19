@@ -215,6 +215,26 @@ RUN_TOOLSETS: dict[str, tuple[str, ...]] = {
     "linkedin_note_generation": (),
 }
 
+# Run types whose payload names the model the agent must use, and the payload
+# key that carries it. Anything absent here runs on the runner's default model.
+# Data, not an `if` on a run type name: a new run type that needs a caller-
+# chosen model adds a line here and nowhere else.
+RUN_MODEL_PAYLOAD_KEY: dict[str, str] = {
+    "lead_research_gap": "decision_model",
+}
+
+
+def model_for(run_type: str, payload: dict) -> str | None:
+    """The model a run must use, or None for the runner's default."""
+    key = RUN_MODEL_PAYLOAD_KEY.get(run_type)
+    if key is None:
+        return None
+    model = payload.get(key)
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError(f"{run_type} payload must name a model under {key!r}")
+    return model
+
+
 RUN_SKILLS: dict[str, frozenset[str]] = {
     run_type: frozenset({skill})
     for run_type, (skill, _) in REGISTRY.items()

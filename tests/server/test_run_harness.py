@@ -111,7 +111,7 @@ class BlockingExecutor(BaseRunExecutor):
     def __init__(self):
         self.cancelled = False
 
-    def execute(self, runs, run):
+    def _execute_run(self, runs, run):
         while not self.cancelled:
             time.sleep(0.01)
         raise InterruptedError("cancelled")

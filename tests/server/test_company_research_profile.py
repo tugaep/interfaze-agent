@@ -126,7 +126,7 @@ def test_onboarding_research_is_bounded_and_remains_an_unconfirmed_suggestion(tm
 
 
 class _UncitedProfileExecutor(BaseRunExecutor):
-    def execute(self, service, run):
+    def _execute_run(self, service, run):
         return {
             "identity": {"name": "Acme", "website": "https://acme.test"},
             "seller_countries": ["TR"],

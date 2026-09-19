@@ -132,9 +132,9 @@ def test_scheduler_invokes_refresh_once_due_hour_without_changing_digest_count(t
 
 
 class RefreshExecutor(StubRunExecutor):
-    def execute(self, service, run):
+    def _execute_run(self, service, run):
         if run["run_type"] != "lead_research_refresh":
-            return super().execute(service, run)
+            return super()._execute_run(service, run)
         content = "Buyer GmbH now has recent hiring activity."
         literal = "recent hiring activity"
         start = content.index(literal)

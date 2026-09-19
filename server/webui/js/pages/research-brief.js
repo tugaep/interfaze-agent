@@ -66,9 +66,13 @@ function sourceSummary(sources) {
   const summary = {
     ok: true,
     ids: [...selected],
+    // Keyed to the declared capability, never to a source id: the engine only
+    // asks a source for new companies if it implements candidate discovery
+    // (discovery.py, `isinstance(provider, CandidateSource)`), and a verifier
+    // such as TED does not. Assuming "anything but the corpus can discover"
+    // let a TED-only tenant start a search the engine would then refuse.
     canDiscover: ready.some(source =>
-      source.capabilities?.includes('candidate_discovery')
-      || source.source_id !== 'customer-list-corpus'),
+      source.capabilities?.includes('candidate_discovery')),
     node: null,
   };
   summary.node = el('fieldset', { class: 'ifz-research-source-brief' },

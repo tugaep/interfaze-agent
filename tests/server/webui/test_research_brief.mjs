@@ -35,10 +35,16 @@ test('brief accepts a product name without sector or HS selection', async () => 
 
 function baseResponses(overrides = {}) {
   return {
+    // `capabilities` mirrors provider-catalog.yaml: the page decides whether a
+    // search can find new companies from it, so the fixture must say what the
+    // real catalog says. Only Bright Data implements candidate discovery.
     '/api/v1/data-sources/catalog': [
-      { source_id: 'ted', display_name: 'Tenders Electronic Daily', available: true },
-      { source_id: 'brightdata-web', display_name: 'Bright Data Web Unlocker', available: true },
-      { source_id: 'customer-list-corpus', display_name: 'Customer list corpus', available: false },
+      { source_id: 'ted', display_name: 'Tenders Electronic Daily', available: true,
+        capabilities: ['procurement', 'organizations', 'candidate_verification', 'authoritative_registry'] },
+      { source_id: 'brightdata-web', display_name: 'Bright Data Web Unlocker', available: true,
+        capabilities: ['candidate_discovery', 'candidate_verification', 'web_evidence'] },
+      { source_id: 'customer-list-corpus', display_name: 'Customer list corpus', available: false,
+        capabilities: ['organizations', 'candidate_verification'] },
     ],
     '/api/v1/research/sectors': SECTORS,
     '/api/v1/research/configuration': { default_seller_countries: ['TR'] },
@@ -163,6 +169,35 @@ test('a public discovery source still runs when the local index has no candidate
   assert.ok(posts.some(entry => entry.url.endsWith('/estimate')), 'the brief must check first');
   assert.equal(posts.some(entry => entry.url.endsWith('/start')), true, 'public discovery must still run');
   assert.deepEqual(navigated, ['/app/research']);
+});
+
+test('a verifier-only tenant cannot start a search the engine would refuse', async () => {
+  // TED verifies companies it is given; it does not find new ones. The engine
+  // skips any source that is not a CandidateSource, so with no corpus match
+  // and no discovery source a start would be a search already decided.
+  const posts = [];
+  const navigated = [];
+  const root = await mountBrief(baseResponses({
+    '/api/v1/data-sources/catalog': [
+      { source_id: 'ted', display_name: 'Tenders Electronic Daily', available: true,
+        capabilities: ['procurement', 'organizations', 'candidate_verification', 'authoritative_registry'] },
+    ],
+  }), {
+    posts,
+    navigated,
+    postResponses: {
+      '/estimate': { status: 'available', corpus_candidates: 0, unmatched_terms: ['household-appliances'] },
+    },
+  });
+
+  byText(root, 'button', 'Run lead search').click();
+  await nextTurn();
+  await nextTurn();
+
+  assert.ok(posts.some(entry => entry.url.endsWith('/estimate')), 'the brief must check first');
+  assert.equal(posts.some(entry => entry.url.endsWith('/start')), false,
+    'a source that only verifies must not be treated as one that can discover');
+  assert.deepEqual(navigated, []);
 });
 
 test('a brief that matches candidates still starts', async () => {

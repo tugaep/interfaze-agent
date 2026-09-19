@@ -188,8 +188,47 @@ def extract_json(text: str) -> dict:
 
 
 class BaseRunExecutor:
+    """The seam between a run and whatever actually answers it.
+
+    One rule, inherited by every executor rather than restated per subclass:
+    **a run that produced no usable output raises.** It never returns an empty
+    or partial result for the service to interpret, because the failures worth
+    guarding here are the silent ones. The runner exits 0 when the agent fails
+    -- "No LLM provider configured" and an HTTP 401 both arrive as a successful
+    process with the reason on stdout -- so an executor that passed those back
+    as data would mark the run succeeded with nothing in it.
+
+    A run that legitimately found nothing is *not* that case. Zero results is a
+    success that names its reason (``{"leads": [], "stop_reason": ...}``); see
+    the zero-result invariant in CLAUDE.md. This guard is about the absence of
+    an answer, never about the size of one.
+
+    Subclasses implement `_execute_run`. `execute` is the enforcement point and
+    must not be overridden; tests/server/test_run_executor_contract.py asserts
+    that for every subclass, so a second executor inherits the judgement
+    instead of reimplementing it.
+    """
+
     def execute(self, service: "AgentRunService", run: dict) -> dict:
+        return self._require_output(self._execute_run(service, run), run)
+
+    def _execute_run(self, service: "AgentRunService", run: dict) -> dict:
         raise NotImplementedError
+
+    def _require_output(self, output, run: dict, diagnostics: str = "") -> dict:
+        """Raise unless the executor actually produced a result.
+
+        `diagnostics` is where an executor passes what it knows about the
+        failure -- a transcript tail, a provider message -- so the operator
+        reading a failed run sees the reason rather than its symptom.
+        """
+        if isinstance(output, dict) and output:
+            return output
+        where = f"{run.get('run_type', 'run')} {run.get('id', '')}".strip()
+        detail = f": {diagnostics}" if diagnostics else ""
+        raise RuntimeError(
+            f"{type(self).__name__} produced no usable output for {where}{detail}"
+        )
 
     def cancel(self, run_id: str) -> None:
         return None
@@ -197,7 +236,7 @@ class BaseRunExecutor:
 
 class StubRunExecutor(BaseRunExecutor):
     """Credential-free executor used by tests and local UI development."""
-    def execute(self, service: "AgentRunService", run: dict) -> dict:
+    def _execute_run(self, service: "AgentRunService", run: dict) -> dict:
         run_type = run["run_type"]
         if run_type == "analytics_refresh":
             return {"metrics": service.analytics(run["company_id"])}
@@ -251,7 +290,7 @@ class HermesProcessExecutor(BaseRunExecutor):
         self._lock = threading.Lock()
         self._processes: dict[str, subprocess.Popen] = {}
 
-    def execute(self, service: "AgentRunService", run: dict) -> dict:
+    def _execute_run(self, service: "AgentRunService", run: dict) -> dict:
         company_name = service.company_name(run["company_id"])
         skill, prompt = run_types.build(
             run["run_type"], company_name, run["payload"],
@@ -259,14 +298,12 @@ class HermesProcessExecutor(BaseRunExecutor):
         )
         if skill is None:
             return {"metrics": service.analytics(run["company_id"])}
-        command = build_command(run["run_type"], prompt, skill=skill)
-        if run["run_type"] == "lead_research_gap":
-            command = build_command(
-                run["run_type"],
-                prompt,
-                skill=skill,
-                model=run["payload"]["decision_model"],
-            )
+        command = build_command(
+            run["run_type"],
+            prompt,
+            skill=skill,
+            model=run_types.model_for(run["run_type"], run["payload"]),
+        )
         process = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, env={**os.environ},
@@ -319,13 +356,14 @@ class HermesProcessExecutor(BaseRunExecutor):
                     f"{_last_lines(transcript)}"
                 )
             try:
-                return extract_json(transcript)
+                output = extract_json(transcript)
             except ValueError as exc:
                 # Some provider failures produce no structured output. Without
                 # the transcript those cases surface as "agent output did not
                 # contain a JSON object",
                 # which is true and tells an operator nothing.
                 raise RuntimeError(f"{exc}: {_last_lines(transcript)}") from exc
+            return self._require_output(output, run, _last_lines(transcript))
         finally:
             with self._lock:
                 self._processes.pop(run["id"], None)

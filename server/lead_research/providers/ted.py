@@ -28,6 +28,7 @@ from ..models import (
     VerificationBundle,
     VerificationSource,
 )
+from ..catalog import catalog_definition
 from ..quotes import spans_for_facts
 from .base import CatalogProvider
 from .bright_data import _clean_terms, _normalized_domain
@@ -76,26 +77,8 @@ QUERY_UNSAFE = re.compile(r'["()\[\]{}~!=<>&|*?:/\\,]+')
 
 
 def ted_definition() -> DatasetDefinition:
-    return DatasetDefinition(
-        source_id="ted",
-        display_name="Tenders Electronic Daily",
-        publisher="Publications Office of the European Union",
-        jurisdiction=["EU"],
-        categories=["procurement"],
-        homepage="https://ted.europa.eu/",
-        access_tier="public",
-        entity_levels=["named_company", "opportunity"],
-        capabilities=[
-            "procurement", "organizations", "candidate_verification",
-            # The publisher is the EU's Publications Office; see the catalog entry.
-            "authoritative_registry",
-        ],
-        emits=["company_name", "country", "domain", "buyer_role", "product_term"],
-        freshness_days=7,
-        adapter_mode="live",
-        default_enabled=False,
-        health="active",
-    )
+    """The catalog entry; see provider-catalog.yaml for what TED does and does not emit."""
+    return catalog_definition("ted")
 
 
 def _search_term(company_name: str) -> str:
@@ -194,8 +177,13 @@ def _identity_match(candidate: CandidateRecord, names: list[str]) -> str | None:
 
 
 class TedVerifier(CatalogProvider):
-    def __init__(self, client: httpx.Client | None = None) -> None:
-        super().__init__(ted_definition())
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        *,
+        definition: DatasetDefinition | None = None,
+    ) -> None:
+        super().__init__(definition or ted_definition())
         self.client = client or httpx.Client()
 
     def health(self) -> ProviderHealth:
